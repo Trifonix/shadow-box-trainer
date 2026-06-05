@@ -20,7 +20,6 @@
   const GROUND_RATIO = 0.84;
 
   const $ = (id) => document.getElementById(id);
-
   const els = {
     progressTrack: $('progressTrack'),
     phaseCard: $('phaseCard'),
@@ -39,10 +38,8 @@
   };
 
   const ctx = els.canvas.getContext('2d');
-
   let workout = [];
   let mode = 'normal';
-
   let state = {
     phaseIndex: 0,
     remaining: 0,
@@ -54,6 +51,7 @@
     animFrame: null,
   };
 
+  let sbState = { lastT: 0, combo: [], actionIdx: 0, actionTime: 0, bobbing: 0 };
   let scene = { w: 400, h: 240, ground: 210 };
   let audioCtx = null;
 
@@ -87,6 +85,7 @@
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = Math.max(1, Math.floor(rect.width * dpr));
     const h = Math.max(1, Math.floor(rect.height * dpr));
+
     if (els.canvas.width !== w || els.canvas.height !== h) {
       els.canvas.width = w;
       els.canvas.height = h;
@@ -123,16 +122,12 @@
   function updateUI() {
     const phase = workout[state.phaseIndex];
     if (!phase) return;
-
     const isRest = phase.type === 'rest';
     els.phaseCard.className = 'phase-card ' + (isRest ? 'rest' : 'work');
     els.phaseTitle.textContent = phase.title;
     els.phaseHint.textContent = phase.hint;
     els.timerValue.textContent = formatTime(state.remaining);
     els.timerProgress.classList.toggle('rest', isRest);
-
-    const modeTag = mode === 'test' ? ' · тест' : '';
-
     updateTimerRing();
     updateProgressBar();
   }
@@ -194,15 +189,12 @@
       finishWorkout();
       return;
     }
-
     const phase = workout[index];
     state.phaseIndex = index;
     state.remaining = phase.duration;
     state.totalInPhase = phase.duration;
-
     if (phase.type === 'rest') playRestStart();
     else playPhaseStart();
-
     updateUI();
   }
 
@@ -220,24 +212,18 @@
 
   function tick(now) {
     if (!state.running || state.paused) return;
-
     if (!state.lastTick) state.lastTick = now;
     const elapsed = now - state.lastTick;
-
     if (elapsed >= 1000) {
       state.lastTick = now - (elapsed % 1000);
       state.remaining--;
-
       if (state.remaining <= 3 && state.remaining > 0) playCountdownBeep();
-
       if (state.remaining <= 0) {
         nextPhase();
         if (state.phaseIndex >= workout.length) return;
       }
-
       updateUI();
     }
-
     state.tickId = requestAnimationFrame(tick);
   }
 
@@ -258,7 +244,6 @@
       setMode(isTest ? 'test' : 'normal');
       startPhase(0);
     }
-
     getAudio().resume();
     state.running = true;
     state.paused = false;
@@ -266,7 +251,6 @@
     els.btnPause.textContent = 'ПАУЗА';
     els.btnPause.classList.remove('paused');
     els.completeOverlay.classList.add('hidden');
-
     startTimer();
     startAnimation();
     updateUI();
@@ -280,6 +264,7 @@
       els.btnPause.classList.add('paused');
     } else {
       state.lastTick = 0;
+      sbState.lastT = 0;
       startTimer();
       startAnimation();
       els.btnPause.textContent = 'ПАУЗА';
@@ -302,6 +287,7 @@
       lastTick: 0,
       animFrame: null,
     };
+    sbState = { lastT: 0, combo: [], actionIdx: 0, actionTime: 0, bobbing: 0 };
     showIdleControls();
     els.completeOverlay.classList.add('hidden');
     els.phaseTitle.textContent = 'Нажми СТАРТ';
@@ -311,8 +297,7 @@
     drawIdle();
   }
 
-  /* ── Figure renderer: angle 0 = вверх, по часовой ── */
-
+  /* ── Figure renderer ── */
   const BODY = {
     torso: 46,
     neck: 9,
@@ -339,7 +324,6 @@
     return Math.max(2.5, 3.2 * figureScale());
   }
 
-  /** Точка на расстоянии len от (x,y) под углом angle (0 = вверх) */
   function joint(from, length, angle) {
     return {
       x: from.x + Math.sin(angle) * length,
@@ -355,9 +339,6 @@
     ctx.stroke();
   }
 
-  /**
-   * Фигура анфас: ноги от пола вверх, углы абсолютные (0 = вверх).
-   */
   function drawPerson(opts) {
     const {
       cx,
@@ -365,27 +346,27 @@
       jump = 0,
       torso = 0,
       head = 0,
-      lua = 3.15,
-      lla = 3.3,
-      rua = 0.2,
-      rla = 0.35,
-      lsh = 0.32,
-      lth = -0.12,
-      rsh = -0.32,
-      rth = 0.12,
+      lua = Math.PI,
+      lla = Math.PI,
+      rua = Math.PI,
+      rla = Math.PI,
+      lsh = 0,
+      lth = 0,
+      rsh = 0,
+      rth = 0,
     } = opts;
 
     const gy = (groundY ?? scene.ground) - jump;
     const spread = len('footSpread');
-
     const lFoot = { x: cx - spread, y: gy };
     const rFoot = { x: cx + spread, y: gy };
+
     const lKnee = joint(lFoot, len('shin'), lsh);
     const rKnee = joint(rFoot, len('shin'), rsh);
     const lHipPt = joint(lKnee, len('thigh'), lth);
     const rHipPt = joint(rKnee, len('thigh'), rth);
-    const hip = { x: cx, y: (lHipPt.y + rHipPt.y) / 2 };
 
+    const hip = { x: cx, y: (lHipPt.y + rHipPt.y) / 2 };
     const shoulder = joint(hip, len('torso'), torso);
     const neck = joint(shoulder, len('neck'), torso + head);
     const headC = joint(neck, len('head'), torso + head);
@@ -438,84 +419,50 @@
     return g;
   }
 
-  function drawLabel(text, color = '#8b8b9e') {
-    ctx.fillStyle = color;
-    ctx.font = `600 ${Math.max(11, scene.h * 0.048)}px Inter, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(text, scene.w / 2, scene.ground + scene.h * 0.042);
-  }
-
-  function easeJump(x) {
-    return x <= 0 ? 0 : Math.sin(x * Math.PI);
-  }
-
   function animateJumpRope(t) {
     clearCanvas();
     const ground = drawGround();
     const cx = scene.w / 2;
     const s = figureScale();
 
-    // Скорость вращения скакалки
     const phase = (t * 0.007) % (Math.PI * 2);
-
-    // Положение скакалки по вертикали: 1 = в самом низу, -1 = в самом верху
     const ropeAtBottom = Math.cos(phase);
-
-    // Прыжок: максимален (1), когда скакалка находится ровно под ногами
     const jumpFactor = Math.max(0, (ropeAtBottom - 0.4) / 0.6);
     const jump = jumpFactor * 32 * s;
 
-    // Динамика ног: пружинят при приземлении, выпрямляются в высшей точке прыжка
     const legBend = 1 - jumpFactor;
     const lshVal = 0.1 + legBend * 0.15;
     const lthVal = -0.05 - legBend * 0.1;
     const rshVal = -0.1 - legBend * 0.15;
     const rthVal = 0.05 + legBend * 0.1;
 
-    // Небольшое раскачивание рук кистями в такт вращению
     const armSway = Math.sin(phase) * 0.08;
 
     const fig = drawPerson({
-        cx,
-        groundY: ground,
-        jump,
-        torso: 0.02 + legBend * 0.04, // Легкий наклон корпуса вперед при приземлении
-        head: -0.02,
-        // Естественное положение рук для удержания скакалки (вниз и слегка в стороны)
-        lua: 3.44 + armSway,
-        lla: 3.64 + armSway,
-        rua: 2.84 - armSway,
-        rla: 2.64 - armSway,
-        lsh: lshVal,
-        lth: lthVal,
-        rsh: rshVal,
-        rth: rthVal,
+      cx,
+      groundY: ground,
+      jump,
+      torso: 0.02 + legBend * 0.04,
+      head: -0.02,
+      lua: 3.44 + armSway,
+      lla: 3.64 + armSway,
+      rua: 2.84 - armSway,
+      rla: 2.64 - armSway,
+      lsh: lshVal,
+      lth: lthVal,
+      rsh: rshVal,
+      rth: rthVal,
     });
 
-    // Отрисовка самой скакалки
-    // arcY двигается от положения высоко над головой до положения чуть ниже стоп
     const arcY = ground - 110 * s + ropeAtBottom * 140 * s;
-    
-    // Псевдо-3D: определяем, где сейчас скакалка — перед персонажем или за его спиной
-    const isBehind = Math.sin(phase) > 0; 
-
-    // Делаем скакалку темнее и тоньше, когда она уходит на задний план
+    const isBehind = Math.sin(phase) > 0;
     ctx.strokeStyle = isBehind ? '#8b222f' : '#e63946';
     ctx.lineWidth = Math.max(1.5, (isBehind ? 2 : 3) * s);
-
     ctx.beginPath();
     ctx.moveTo(fig.lHand.x, fig.lHand.y);
-
-    // Используем кубическую кривую Безье (вместо квадратичной) 
-    // для создания реалистичной округлой формы петли
     const spreadX = 45 * s;
-    ctx.bezierCurveTo(
-        cx - spreadX, arcY,
-        cx + spreadX, arcY,
-        fig.rHand.x, fig.rHand.y
-    );
+    ctx.bezierCurveTo(cx - spreadX, arcY, cx + spreadX, arcY, fig.rHand.x, fig.rHand.y);
     ctx.stroke();
-
   }
 
   function animateShadowBox(t) {
@@ -524,56 +471,92 @@
     const cx = scene.w / 2;
     const s = figureScale();
 
-    const cycle = Math.sin(t * 0.005);
-    const punchL = Math.max(0, cycle);
-    const punchR = Math.max(0, -cycle);
-    const sway = Math.sin(t * 0.003) * 0.05;
-    const step = Math.sin(t * 0.004) * 0.08;
+    if (!sbState.lastT) sbState.lastT = t;
+    let dt = t - sbState.lastT;
+    sbState.lastT = t;
+    if (dt > 100) dt = 16;
 
-    const guard = { lua: 1.15, lla: 0.85, rua: 1.95, rla: 2.25 };
-    let arms = { ...guard };
+    sbState.bobbing += dt * 0.005;
 
-    if (punchL > 0.15) {
-      const e = (punchL - 0.15) / 0.85;
-      arms = {
-        lua: 4.5 - 0.25 * (1 - e),
-        lla: 4.35 - 0.2 * (1 - e),
-        rua: 1.95,
-        rla: 2.15,
-      };
-    } else if (punchR > 0.15) {
-      const e = (punchR - 0.15) / 0.85;
-      arms = {
-        lua: 1.15,
-        lla: 0.85,
-        rua: 0.4 + 0.25 * (1 - e),
-        rla: 0.55 + 0.2 * (1 - e),
-      };
+    const BOXING_COMBOS = [
+      ['L', 'R'],
+      ['L', 'L', 'R'],
+      ['L', 'D', 'R'],
+      ['L', 'L', 'D', 'R']
+    ];
+
+    if (!sbState.combo || sbState.combo.length === 0 || sbState.actionIdx >= sbState.combo.length) {
+      const randomCombo = BOXING_COMBOS[Math.floor(Math.random() * BOXING_COMBOS.length)];
+      sbState.combo = [...randomCombo, 'P'];
+      sbState.actionIdx = 0;
+      sbState.actionTime = 0;
     }
 
-    const fig = drawPerson({
-      cx,
-      groundY: ground,
-      torso: sway + (punchL > punchR ? -0.08 * punchL : 0.08 * punchR),
-      head: sway * 0.4,
-      ...arms,
-      lsh: 0.32 + step,
-      lth: -0.12,
-      rsh: -0.32 - step,
-      rth: 0.12,
-    });
+    let currentAction = sbState.combo[sbState.actionIdx];
+    sbState.actionTime += dt;
 
-    const active = punchL > punchR ? punchL : punchR;
-    if (active > 0.5) {
-      const side = punchL > punchR ? -1 : 1;
-      const hx = fig.shoulder.x + side * len('upperArm') * 1.6;
-      const hy = fig.shoulder.y - len('torso') * 0.15;
-      ctx.fillStyle = `rgba(230, 57, 70, ${0.2 + active * 0.35})`;
+    let duration = 320; 
+    if (currentAction === 'D') duration = 500;
+    if (currentAction === 'P') duration = 850;
+
+    if (sbState.actionTime >= duration) {
+      sbState.actionIdx++;
+      sbState.actionTime = 0;
+      if (sbState.actionIdx >= sbState.combo.length) {
+        currentAction = 'P';
+        duration = 850;
+      } else {
+        currentAction = sbState.combo[sbState.actionIdx];
+      }
+    }
+
+    let progress = sbState.actionTime / duration;
+    if (progress > 1) progress = 1;
+
+    let lua = 1.15, lla = 0.85;
+    let rua = 1.95, rla = 2.25;
+
+    let torso = Math.sin(sbState.bobbing) * 0.04;
+    let head = Math.cos(sbState.bobbing) * 0.03;
+    let jump = Math.abs(Math.sin(sbState.bobbing * 1.5)) * 4 * s;
+
+    let lsh = 0.32, lth = -0.12, rsh = -0.32, rth = 0.12;
+
+    let punchE = 0;
+    if (progress < 0.3) {
+      punchE = progress / 0.3;
+    } else {
+      punchE = 1 - (progress - 0.3) / 0.7;
+    }
+
+    if (currentAction === 'L') {
+      lua = lua + (1.4 - lua) * punchE;
+      lla = lla + (1.5 - lla) * punchE;
+      torso -= 0.14 * punchE; 
+      head += 0.04 * punchE;
+    } else if (currentAction === 'R') {
+      rua = rua + (0.4 - rua) * punchE;
+      rla = rla + (0.55 - rla) * punchE;
+      torso += 0.18 * punchE; 
+      head -= 0.04 * punchE;
+    } else if (currentAction === 'D') {
+      let duckFactor = Math.sin(progress * Math.PI);
+      jump -= duckFactor * 16 * s;
+      torso += Math.sin(progress * Math.PI * 2) * 0.12;
+      lsh += duckFactor * 0.22;
+      rsh -= duckFactor * 0.22;
+    }
+
+    const fig = drawPerson({ cx, groundY: ground, jump, torso, head, lua, lla, rua, rla, lsh, lth, rsh, rth });
+
+    if ((currentAction === 'L' || currentAction === 'R') && progress > 0.18 && progress < 0.45) {
+      const glove = currentAction === 'L' ? fig.lHand : fig.rHand;
+      const intensity = Math.sin((progress - 0.18) / 0.27 * Math.PI);
+      ctx.fillStyle = `rgba(230, 57, 70, ${0.2 + intensity * 0.45})`;
       ctx.beginPath();
-      ctx.arc(hx, hy, (8 + active * 12) * s, 0, Math.PI * 2);
+      ctx.arc(glove.x, glove.y, (8 + intensity * 14) * s, 0, Math.PI * 2);
       ctx.fill();
     }
-
   }
 
   function animatePushups(t) {
@@ -581,67 +564,118 @@
     const ground = drawGround();
     const cx = scene.w / 2;
     const s = figureScale();
+
+    // Колебание фазы: 0 = верхняя точка, 1 = грудь у пола
     const down = (Math.sin(t * 0.0045) + 1) / 2;
+    const theta = 0.24 - down * 0.19; // Динамический наклон тела
 
-    const boardY = ground - s * 8;
-    const bodyLift = down * s * 28;
-    const angle = -0.55 - down * 0.32;
+    const totalLen = len('shin') + len('thigh') + len('torso');
+    const footX = cx - totalLen * 0.45;
 
-    ctx.save();
-    ctx.translate(cx, boardY - bodyLift);
-    ctx.rotate(angle);
-    ctx.scale(s, s);
+    // Стопы стабильно уперты в землю
+    const lFoot = { x: footX, y: ground };
+    const rFoot = { x: footX + 4 * s, y: ground - 1 * s };
 
-    const hip = { x: 0, y: 0 };
-    const shoulder = { x: 42, y: -2 };
-    const headPt = { x: 56, y: -6 };
-    const lHand = { x: 34, y: 20 };
-    const rHand = { x: 14, y: 22 };
-    const lKnee = { x: -30, y: 4 };
-    const rKnee = { x: -20, y: 6 };
-    const lFoot = { x: -46, y: 16 };
-    const rFoot = { x: -36, y: 18 };
+    const shoulderL = {
+      x: lFoot.x + Math.cos(theta) * totalLen,
+      y: lFoot.y - Math.sin(theta) * totalLen
+    };
+    const shoulderR = { x: shoulderL.x + 5 * s, y: shoulderL.y - 2 * s };
+
+    const hipRatio = (len('shin') + len('thigh')) / totalLen;
+    const kneeRatio = len('shin') / totalLen;
+
+    const lHip = { x: lFoot.x + (shoulderL.x - lFoot.x) * hipRatio, y: lFoot.y + (shoulderL.y - lFoot.y) * hipRatio };
+    const rHip = { x: rFoot.x + (shoulderR.x - rFoot.x) * hipRatio, y: rFoot.y + (shoulderR.y - rFoot.y) * hipRatio };
+
+    const lKnee = { x: lFoot.x + (shoulderL.x - lFoot.x) * kneeRatio, y: lFoot.y + (shoulderL.y - lFoot.y) * kneeRatio };
+    const rKnee = { x: rFoot.x + (shoulderR.x - rFoot.x) * kneeRatio, y: rFoot.y + (shoulderR.y - rFoot.y) * kneeRatio };
+
+    const headLen = len('neck') + len('head');
+    const headC = {
+      x: shoulderL.x + Math.cos(theta) * headLen,
+      y: shoulderL.y - Math.sin(theta) * headLen
+    };
+
+    // Опорные точки ладоней строго зафиксированы на линии пола
+    const handX = lFoot.x + Math.cos(0.05) * totalLen + 1 * s;
+    const lHand = { x: handX, y: ground };
+    const rHand = { x: handX + 7 * s, y: ground };
+
+    // Локти сгибаются назад и вверх в зависимости от фазы опускания
+    const lElbow = {
+      x: shoulderL.x - len('upperArm') * (0.2 + 0.45 * down),
+      y: shoulderL.y + len('upperArm') * (0.8 - 0.25 * down)
+    };
+    const rElbow = {
+      x: shoulderR.x - len('upperArm') * (0.2 + 0.45 * down),
+      y: shoulderR.y + len('upperArm') * (0.8 - 0.25 * down)
+    };
 
     ctx.strokeStyle = '#f1f1f4';
+    ctx.fillStyle = '#f1f1f4';
     ctx.lineCap = 'round';
-    ctx.lineWidth = 3;
-    strokeSeg(hip, shoulder, 3);
-    strokeSeg(shoulder, headPt, 2.5);
-    strokeSeg(shoulder, lHand, 3);
-    strokeSeg(shoulder, rHand, 3);
-    strokeSeg(hip, lKnee, 3);
-    strokeSeg(lKnee, lFoot, 3);
-    strokeSeg(hip, rKnee, 3);
-    strokeSeg(rKnee, rFoot, 3);
-    ctx.beginPath();
-    ctx.arc(headPt.x + 6, headPt.y, 11, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.lineJoin = 'round';
+    const w = lineW();
 
-    ctx.restore();
+    // Рендеринг дальней стороны (правые конечности)
+    strokeSeg(rHip, shoulderR, w * 0.85);
+    strokeSeg(shoulderR, rElbow, w * 0.85);
+    strokeSeg(rElbow, rHand, w * 0.85);
+    strokeSeg(rHip, rKnee, w * 0.85);
+    strokeSeg(rKnee, rFoot, w * 0.85);
+
+    // Рендеринг ближней стороны (левые конечности и осевая линия)
+    strokeSeg(lHip, shoulderL, w);
+    strokeSeg(shoulderL, lElbow, w);
+    strokeSeg(lElbow, lHand, w);
+    strokeSeg(lHip, lKnee, w);
+    strokeSeg(lKnee, lFoot, w);
+
+    // Голова
+    ctx.beginPath();
+    ctx.arc(headC.x, headC.y, len('head'), 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   function animateSquats(t) {
     clearCanvas();
     const ground = drawGround();
     const cx = scene.w / 2;
-    const depth = (Math.sin(t * 0.0035) + 1) / 2;
-    const d = depth * depth;
+
+    const depth = (Math.sin(t * 0.0035) + 1) / 2; 
+    const d = depth * depth; // Нелинейное сглаживание в нижней точке
+
+    // Колени разводятся в стороны (влево/вправо), таз опускается строго по вертикали
+    const lshVal = -0.05 - d * 0.95; 
+    const lthVal = 0.05 + d * 0.95;  
+    const rshVal = 0.05 + d * 0.95;  
+    const rthVal = -0.05 - d * 0.95; 
+
+    // Руки поднимаются вперед-вверх для удержания баланса
+    const luaVal = Math.PI - d * 1.75; 
+    const llaVal = Math.PI - d * 1.85; 
+    const ruaVal = Math.PI + d * 1.75; 
+    const rlaVal = Math.PI + d * 1.85; 
+
+    // Естественный небольшой наклон корпуса и головы вперед при седе
+    const torsoVal = d * 0.06;
+    const headVal = -d * 0.03;
 
     drawPerson({
       cx,
       groundY: ground,
-      torso: 0.08 + d * 0.35,
-      head: -0.04 - d * 0.08,
-      lua: 1.35 + d * 0.45,
-      lla: 1.05 + d * 0.35,
-      rua: 1.8 - d * 0.45,
-      rla: 2.1 - d * 0.35,
-      lsh: 0.55 + d * 0.55,
-      lth: 0.35 + d * 0.45,
-      rsh: -0.55 - d * 0.55,
-      rth: -0.35 - d * 0.45,
+      torso: torsoVal,
+      head: headVal,
+      lua: luaVal,
+      lla: llaVal,
+      rua: ruaVal,
+      rla: rlaVal,
+      lsh: lshVal,
+      lth: lthVal,
+      rsh: rshVal,
+      rth: rthVal,
     });
-
   }
 
   function animateRest(t) {
@@ -649,6 +683,7 @@
     const ground = drawGround();
     const cx = scene.w / 2;
     const s = figureScale();
+
     const breath = Math.sin(t * 0.002);
     const figCenterY = ground - len('thigh') - len('shin') - len('torso') * 0.45;
 
@@ -668,10 +703,9 @@
       torso: breath * 0.04,
       lua: 3.1,
       lla: 3.25,
-      rua: 0.25,
-      rla: 0.4,
+      rua: 3.2,
+      rla: 3.1,
     });
-
   }
 
   function drawIdle() {
