@@ -1,0 +1,6 @@
+{
+  "name": "shadow-box-trainer",
+  "version": "1.0.0",
+  "description": "Тренажёр-таймер для самостоятельных тренировок по боксу",
+  "private": true
+}

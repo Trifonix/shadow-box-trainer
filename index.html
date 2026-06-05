@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Shadow Box Trainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🥊</span>
+        <h1>Shadow Box Trainer</h1>
+      </div>
+      <p class="tagline" id="tagline">Самостоятельная тренировка · 46 минут</p>
+    </header>
+
+    <main class="main">
+      <section class="progress-bar" aria-label="Прогресс тренировки">
+        <div class="progress-track" id="progressTrack"></div>
+      </section>
+
+      <section class="phase-card" id="phaseCard">
+        <span class="phase-label" id="phaseLabel">Готов к бою</span>
+        <h2 class="phase-title" id="phaseTitle">Нажми СТАРТ</h2>
+        <p class="phase-hint" id="phaseHint">скакалка → тень → отжимания → приседания</p>
+      </section>
+
+      <div class="center-block">
+        <section class="timer-section">
+          <div class="timer-ring">
+            <svg class="timer-svg" viewBox="0 0 200 200">
+              <circle class="timer-bg" cx="100" cy="100" r="90"></circle>
+              <circle class="timer-progress" id="timerProgress" cx="100" cy="100" r="90"></circle>
+            </svg>
+            <div class="timer-display">
+              <span class="timer-value" id="timerValue">10:00</span>
+              <span class="timer-unit">осталось</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="animation-section">
+          <canvas id="exerciseCanvas" aria-label="Демонстрация упражнения"></canvas>
+        </section>
+      </div>
+
+      <section class="bottom-bar">
+        <div class="controls" id="controlsIdle">
+          <button class="btn btn-start" id="btnStart" type="button">СТАРТ</button>
+          <button class="btn btn-test" id="btnTestStart" type="button">Тестовый старт</button>
+        </div>
+        <div class="controls hidden" id="controlsActive">
+          <button class="btn btn-pause" id="btnPause" type="button">ПАУЗА</button>
+        </div>
+        <p class="footer-status" id="footerStatus">Тренировка не начата</p>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay hidden" id="completeOverlay">
+    <div class="overlay-content">
+      <span class="overlay-icon">🏆</span>
+      <h2>Тренировка завершена!</h2>
+      <p>Отличная работа. Отдохни и восстановись.</p>
+      <button class="btn btn-start" id="btnRestart" type="button">Заново</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
