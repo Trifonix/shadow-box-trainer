@@ -24,10 +24,8 @@
   const els = {
     progressTrack: $('progressTrack'),
     phaseCard: $('phaseCard'),
-    phaseLabel: $('phaseLabel'),
     phaseTitle: $('phaseTitle'),
     phaseHint: $('phaseHint'),
-    tagline: $('tagline'),
     timerValue: $('timerValue'),
     timerProgress: $('timerProgress'),
     canvas: $('exerciseCanvas'),
@@ -36,7 +34,6 @@
     btnPause: $('btnPause'),
     controlsIdle: $('controlsIdle'),
     controlsActive: $('controlsActive'),
-    footerStatus: $('footerStatus'),
     completeOverlay: $('completeOverlay'),
     btnRestart: $('btnRestart'),
   };
@@ -71,7 +68,6 @@
   function setMode(kind) {
     mode = kind;
     workout = buildWorkout(kind);
-    els.tagline.textContent = WORKOUTS[kind].label;
     initProgressBar();
   }
 
@@ -130,16 +126,12 @@
 
     const isRest = phase.type === 'rest';
     els.phaseCard.className = 'phase-card ' + (isRest ? 'rest' : 'work');
-    els.phaseLabel.textContent = isRest ? 'Отдых' : `Раунд ${Math.ceil((state.phaseIndex + 1) / 2)}`;
     els.phaseTitle.textContent = phase.title;
     els.phaseHint.textContent = phase.hint;
     els.timerValue.textContent = formatTime(state.remaining);
     els.timerProgress.classList.toggle('rest', isRest);
 
     const modeTag = mode === 'test' ? ' · тест' : '';
-    els.footerStatus.textContent = state.running
-      ? (state.paused ? 'Пауза' : `Этап ${state.phaseIndex + 1} из ${workout.length}${modeTag}`)
-      : 'Тренировка не начата';
 
     updateTimerRing();
     updateProgressBar();
@@ -224,7 +216,6 @@
     showIdleControls();
     playComplete();
     els.completeOverlay.classList.remove('hidden');
-    els.footerStatus.textContent = 'Тренировка завершена!';
   }
 
   function tick(now) {
@@ -313,7 +304,6 @@
     };
     showIdleControls();
     els.completeOverlay.classList.add('hidden');
-    els.phaseLabel.textContent = 'Готов к бою';
     els.phaseTitle.textContent = 'Нажми СТАРТ';
     els.phaseHint.textContent = 'скакалка → тень → отжимания → приседания';
     els.phaseCard.className = 'phase-card';
@@ -526,7 +516,6 @@
     );
     ctx.stroke();
 
-    drawLabel('Прыжки / скакалка');
   }
 
   function animateShadowBox(t) {
@@ -585,7 +574,6 @@
       ctx.fill();
     }
 
-    drawLabel('Бой с тенью');
   }
 
   function animatePushups(t) {
@@ -630,7 +618,6 @@
     ctx.stroke();
 
     ctx.restore();
-    drawLabel('Отжимания');
   }
 
   function animateSquats(t) {
@@ -655,7 +642,6 @@
       rth: -0.35 - d * 0.45,
     });
 
-    drawLabel('Приседания');
   }
 
   function animateRest(t) {
@@ -686,14 +672,12 @@
       rla: 0.4,
     });
 
-    drawLabel('Отдых · дыши глубоко', '#4cc9f0');
   }
 
   function drawIdle() {
     clearCanvas();
     const ground = drawGround();
     drawPerson({ cx: scene.w / 2, groundY: ground });
-    drawLabel('Нажми СТАРТ для начала');
   }
 
   const animators = {
