@@ -465,36 +465,65 @@
     const cx = scene.w / 2;
     const s = figureScale();
 
-    const phase = (t * 0.01) % (Math.PI * 2);
-    const ropeAtFeet = Math.cos(phase);
-    const jumpT = Math.max(0, (ropeAtFeet - 0.2) / 0.8);
-    const jump = easeJump(jumpT) * 22 * s;
-    const land = jump < s * 2;
+    // Скорость вращения скакалки
+    const phase = (t * 0.007) % (Math.PI * 2);
 
-    const sway = Math.sin(phase) * 0.06;
+    // Положение скакалки по вертикали: 1 = в самом низу, -1 = в самом верху
+    const ropeAtBottom = Math.cos(phase);
+
+    // Прыжок: максимален (1), когда скакалка находится ровно под ногами
+    const jumpFactor = Math.max(0, (ropeAtBottom - 0.4) / 0.6);
+    const jump = jumpFactor * 32 * s;
+
+    // Динамика ног: пружинят при приземлении, выпрямляются в высшей точке прыжка
+    const legBend = 1 - jumpFactor;
+    const lshVal = 0.1 + legBend * 0.15;
+    const lthVal = -0.05 - legBend * 0.1;
+    const rshVal = -0.1 - legBend * 0.15;
+    const rthVal = 0.05 + legBend * 0.1;
+
+    // Небольшое раскачивание рук кистями в такт вращению
+    const armSway = Math.sin(phase) * 0.08;
+
     const fig = drawPerson({
-      cx,
-      groundY: ground,
-      jump,
-      torso: land ? 0.06 : -0.02,
-      lua: 3.55 + sway,
-      lla: 3.4 + sway,
-      rua: 0.58 - sway,
-      rla: 0.72 - sway,
-      lsh: land ? 0.42 : 0.28,
-      lth: land ? -0.05 : 0.05,
-      rsh: land ? -0.42 : -0.28,
-      rth: land ? 0.05 : -0.05,
+        cx,
+        groundY: ground,
+        jump,
+        torso: 0.02 + legBend * 0.04, // Легкий наклон корпуса вперед при приземлении
+        head: -0.02,
+        // Естественное положение рук для удержания скакалки (вниз и слегка в стороны)
+        lua: 3.44 + armSway,
+        lla: 3.64 + armSway,
+        rua: 2.84 - armSway,
+        rla: 2.64 - armSway,
+        lsh: lshVal,
+        lth: lthVal,
+        rsh: rshVal,
+        rth: rthVal,
     });
 
-    const atBottom = (ropeAtFeet + 1) / 2;
-    const arcY = ground + (1 - atBottom) * 8 * s + len('shin') * 0.15;
+    // Отрисовка самой скакалки
+    // arcY двигается от положения высоко над головой до положения чуть ниже стоп
+    const arcY = ground - 110 * s + ropeAtBottom * 140 * s;
+    
+    // Псевдо-3D: определяем, где сейчас скакалка — перед персонажем или за его спиной
+    const isBehind = Math.sin(phase) > 0; 
 
-    ctx.strokeStyle = '#e63946';
-    ctx.lineWidth = Math.max(2, 2.8 * s);
+    // Делаем скакалку темнее и тоньше, когда она уходит на задний план
+    ctx.strokeStyle = isBehind ? '#8b222f' : '#e63946';
+    ctx.lineWidth = Math.max(1.5, (isBehind ? 2 : 3) * s);
+
     ctx.beginPath();
     ctx.moveTo(fig.lHand.x, fig.lHand.y);
-    ctx.quadraticCurveTo(cx, arcY, fig.rHand.x, fig.rHand.y);
+
+    // Используем кубическую кривую Безье (вместо квадратичной) 
+    // для создания реалистичной округлой формы петли
+    const spreadX = 45 * s;
+    ctx.bezierCurveTo(
+        cx - spreadX, arcY,
+        cx + spreadX, arcY,
+        fig.rHand.x, fig.rHand.y
+    );
     ctx.stroke();
 
     drawLabel('Прыжки / скакалка');
